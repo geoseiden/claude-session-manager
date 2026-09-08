@@ -18,7 +18,6 @@ Grab the file for your machine from the [latest release](../../releases/latest) 
 |---|---|---|
 | **Windows** | `ClaudeSessionManager-windows-x64.exe` | Double-click. Windows SmartScreen warns because the app isn't code-signed: click **More info → Run anyway**. |
 | **macOS** (Apple Silicon) | `ClaudeSessionManager-macos-apple-silicon.zip` | Unzip, then **right-click the app → Open**. A plain double-click is refused for unsigned apps. |
-| **macOS** (Intel) | `ClaudeSessionManager-macos-intel.zip` | Same as above. |
 | **Linux** | `ClaudeSessionManager-linux-x86_64` | `chmod +x ClaudeSessionManager-linux-x86_64 && ./ClaudeSessionManager-linux-x86_64` |
 
 The app opens your default browser to a page served from your own machine. Nothing
@@ -98,15 +97,19 @@ macOS/Linux: `./run.sh` · Windows: `run.bat`
 
 PyInstaller can't cross-compile, so each OS has to build its own binary.
 
-**All four at once, without owning all three platforms** — push to GitHub and tag:
+**All three at once, without owning all three platforms** — push to GitHub and tag:
 
 ```bash
 git tag v1.0.0 && git push --tags
 ```
 
-[`.github/workflows/build.yml`](.github/workflows/build.yml) builds Windows, Linux,
-Intel Mac and Apple Silicon Mac, then attaches all four to a GitHub Release. You can
-also trigger it by hand from the **Actions** tab.
+[`.github/workflows/build.yml`](.github/workflows/build.yml) builds Windows, Linux and
+Apple Silicon macOS, and each attaches itself to the GitHub Release as it finishes.
+You can also trigger it by hand from the **Actions** tab.
+
+Intel Macs aren't built: GitHub is retiring its `macos-13` runners. Intel users can
+run from source (`python3 app.py`) — or add a `macos-13` matrix entry back if the
+runners are still available to you.
 
 **Locally, for the OS you're on:**
 

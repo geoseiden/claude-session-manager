@@ -25,9 +25,6 @@ jobs:
           - os: windows-latest
             asset: ClaudeSessionManager-windows-x64.exe
             built: dist/ClaudeSessionManager.exe
-          - os: macos-13            # Intel Macs
-            asset: ClaudeSessionManager-macos-intel.zip
-            built: dist/ClaudeSessionManager.zip
           - os: macos-14            # Apple Silicon
             asset: ClaudeSessionManager-macos-apple-silicon.zip
             built: dist/ClaudeSessionManager.zip
@@ -62,9 +59,8 @@ jobs:
 
             - **Windows** — `ClaudeSessionManager-windows-x64.exe`, double-click.
               SmartScreen may warn on an unsigned app: More info -> Run anyway.
-            - **macOS** — unzip, then **right-click the app -> Open** the first time
-              (an unsigned app won't open on a plain double-click).
-              Apple Silicon and Intel builds are separate downloads.
+            - **macOS** (Apple Silicon) — unzip, then **right-click the app -> Open**
+              the first time (an unsigned app won't open on a plain double-click).
             - **Linux** — `chmod +x` the file, then run it.
 
             Builds are attached as each platform finishes, so a slow runner may mean
