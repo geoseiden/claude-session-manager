@@ -45,14 +45,11 @@ jobs:
         shell: bash
         run: mv "${{ matrix.built }}" "${{ matrix.asset }}"
 
-      # Always keep an artifact, so non-tag runs are still downloadable.
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset }}
-          path: ${{ matrix.asset }}
-
-      # Publish straight into the release. The first job to finish creates it;
-      # the rest attach to it. No waiting on the slowest platform.
+      # The release comes first: it is the actual deliverable, and GitHub's
+      # artifact storage has been known to 403 mid-upload. Publishing here means
+      # a flaky artifact service can never cost us the binary.
+      # The first job to finish creates the release; the rest attach to it, so
+      # nothing waits on the slowest platform.
       - name: Add to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -72,3 +69,12 @@ jobs:
 
             Builds are attached as each platform finishes, so a slow runner may mean
             one file arrives a few minutes after the others.
+
+      # Secondary copy, so manual (non-tag) runs are still downloadable.
+      # Non-blocking: the release above is what matters.
+      - name: Upload artifact
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
