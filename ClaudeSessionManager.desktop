@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Claude Session Manager
+Comment=Browse and delete Claude Code session transcripts
+Exec=/opt/claude-session-manager/ClaudeSessionManager
+Icon=utilities-terminal
+Terminal=false
+Categories=Utility;
