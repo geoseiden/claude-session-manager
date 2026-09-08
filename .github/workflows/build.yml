@@ -1,17 +1,22 @@
 name: Build apps
 
 # PyInstaller can't cross-compile, so each OS builds its own app here.
-# Push a tag (git tag v1.0.0 && git push --tags) to get a release with all four
-# downloads, or run this manually from the Actions tab.
+# Push a tag (git tag v1.0.0 && git push --tags) to get a release, or run this
+# manually from the Actions tab.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
+# Re-pushing a tag supersedes the previous run for it rather than racing it.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
-      fail-fast: false
+      fail-fast: false          # a slow or broken runner must not sink the rest
       matrix:
         include:
           - os: ubuntu-22.04        # older glibc = runs on more Linux distros
@@ -27,6 +32,8 @@ jobs:
             asset: ClaudeSessionManager-macos-apple-silicon.zip
             built: dist/ClaudeSessionManager.zip
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write             # each job publishes its own asset
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,24 +44,22 @@ jobs:
       - name: Name the asset
         shell: bash
         run: mv "${{ matrix.built }}" "${{ matrix.asset }}"
+
+      # Always keep an artifact, so non-tag runs are still downloadable.
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
 
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
+      # Publish straight into the release. The first job to finish creates it;
+      # the rest attach to it. No waiting on the slowest platform.
+      - name: Add to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
-          merge-multiple: true
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: ClaudeSessionManager-*
+          tag_name: ${{ github.ref_name }}
+          files: ${{ matrix.asset }}
+          fail_on_unmatched_files: true
           body: |
             Download the file for your machine, then open it. Nothing to install.
 
@@ -62,4 +67,8 @@ jobs:
               SmartScreen may warn on an unsigned app: More info -> Run anyway.
             - **macOS** — unzip, then **right-click the app -> Open** the first time
               (an unsigned app won't open on a plain double-click).
+              Apple Silicon and Intel builds are separate downloads.
             - **Linux** — `chmod +x` the file, then run it.
+
+            Builds are attached as each platform finishes, so a slow runner may mean
+            one file arrives a few minutes after the others.
