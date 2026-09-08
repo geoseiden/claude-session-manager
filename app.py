@@ -369,6 +369,11 @@ PAGE = r'''<!doctype html>
   .msg{border-left:2px solid var(--line);padding:2px 0 2px 10px;margin-bottom:10px;
        font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word}
   .empty{padding:40px 16px;color:var(--muted);text-align:center}
+  #stopped{display:none;position:fixed;inset:0;z-index:20;background:var(--bg);
+           flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center}
+  #stopped.show{display:flex}
+  #stopped h2{margin:0;font-size:17px;font-weight:600}
+  #stopped p{margin:0;color:var(--muted)}
   dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);
          color:var(--text);padding:20px;max-width:460px;box-shadow:0 12px 40px #0003}
   dialog::backdrop{background:#0006}
@@ -386,6 +391,7 @@ PAGE = r'''<!doctype html>
     <button id="rescan">Rescan</button>
     <input type="search" id="q" placeholder="Filter by name, project, prompt...">
     <span class="stats" id="stats">Loading...</span>
+    <button id="quit" title="Stop the app and close the server">Quit</button>
   </div>
   <div class="row" style="margin-top:10px">
     <label class="meta"><input type="checkbox" id="all"> Select all shown</label>
@@ -410,6 +416,10 @@ PAGE = r'''<!doctype html>
   </div>
   <aside id="side"></aside>
 </main>
+<div id="stopped">
+  <h2>Claude Session Manager has stopped</h2>
+  <p>You can close this tab.</p>
+</div>
 <dialog id="confirm">
   <h3>Delete permanently?</h3>
   <div id="cbody"></div>
@@ -550,6 +560,17 @@ $("ok").addEventListener("click", async () => {
   await load($("root").value);
 });
 
+$("quit").addEventListener("click", async () => {
+  if (!confirm("Stop Claude Session Manager?")) return;
+  clearInterval(beat);
+  try { await api("/api/quit", {method: "POST"}); } catch (e) { /* server died mid-reply */ }
+  $("stopped").className = "show";
+});
+
+// Heartbeat: the server exits on its own once no page has checked in for a
+// while, so closing the tab is also a valid way to quit.
+const beat = setInterval(() => { api("/api/ping").catch(() => {}); }, 10000);
+
 load("");
 </script></body></html>'''
 
@@ -577,6 +598,7 @@ def make_handler(scanner: Scanner, token: str, state: dict):
             return False
 
         def do_GET(self):
+            state["last_seen"] = time.time()
             url = urlparse(self.path)
             if url.path == "/":
                 return self._send(200, PAGE.replace("__TOKEN__", token), "text/html")
@@ -590,6 +612,10 @@ def make_handler(scanner: Scanner, token: str, state: dict):
                 state["root"] = root
                 return self._send(200, json.dumps(
                     {"root": str(root), "sessions": scanner.scan(root)}))
+            if url.path == "/api/ping":
+                if not self._authed():
+                    return
+                return self._send(200, json.dumps({"ok": True}))
             if url.path == "/api/pick":
                 if not self._authed():
                     return
@@ -598,7 +624,18 @@ def make_handler(scanner: Scanner, token: str, state: dict):
             self._send(404, json.dumps({"error": "not found"}))
 
         def do_POST(self):
-            if urlparse(self.path).path != "/api/delete":
+            state["last_seen"] = time.time()
+            path = urlparse(self.path).path
+            if path == "/api/quit":
+                if not self._authed():
+                    return
+                self._send(200, json.dumps({"ok": True}))
+                log("shutting down (asked to quit)")
+                # shutdown() blocks until serve_forever stops, so it cannot be
+                # called from the thread that is currently handling a request.
+                threading.Thread(target=state["server"].shutdown, daemon=True).start()
+                return
+            if path != "/api/delete":
                 return self._send(404, json.dumps({"error": "not found"}))
             if not self._authed():
                 return
@@ -615,15 +652,35 @@ def make_handler(scanner: Scanner, token: str, state: dict):
     return Handler
 
 
-def run_gui(root: Path, port: int, open_browser: bool):
+IDLE_TIMEOUT = 90      # seconds with no page open before the server gives up
+STARTUP_GRACE = 120    # don't count idleness while a slow browser is starting
+
+
+def watch_for_idle(server, state):
+    """Exit once every page is closed, so a double-clicked app doesn't linger."""
+    started = time.time()
+    while True:
+        time.sleep(10)
+        if time.time() - started < STARTUP_GRACE:
+            continue
+        if time.time() - state["last_seen"] > IDLE_TIMEOUT:
+            log("shutting down (no page open)")
+            server.shutdown()
+            return
+
+
+def run_gui(root: Path, port: int, open_browser: bool, auto_exit: bool = True):
     scanner = Scanner()
     token = secrets.token_urlsafe(24)
-    state = {"root": root}
+    state = {"root": root, "last_seen": time.time()}
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(scanner, token, state))
+    state["server"] = server
     url = f"http://127.0.0.1:{server.server_port}/"
     log(f"{APP_NAME}\n  scanning: {root}\n  open:     {url}\n  (Ctrl+C to quit)")
     if open_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+    if auto_exit:
+        threading.Thread(target=watch_for_idle, args=(server, state), daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -646,6 +703,8 @@ def main():
     ap.add_argument("--port", type=int, default=0, help="port (default: any free port)")
     ap.add_argument("--list", action="store_true", help="print a terminal listing and exit")
     ap.add_argument("--no-browser", action="store_true", help="don't open a browser")
+    ap.add_argument("--stay-open", action="store_true",
+                    help="keep running even when no page is open")
     args = ap.parse_args()
 
     root = Path(args.root).expanduser() if args.root else default_root()
@@ -659,7 +718,7 @@ def main():
         if args.list:
             run_list(root)
         else:
-            run_gui(root, args.port, not args.no_browser)
+            run_gui(root, args.port, not args.no_browser, not args.stay_open)
     except OSError as exc:
         show_error(f"{APP_NAME} could not start: {exc}")
         sys.exit(1)

@@ -21,8 +21,7 @@ Grab the file for your machine from the [latest release](../../releases/latest) 
 | **Linux** | `ClaudeSessionManager-linux-x86_64` | `chmod +x ClaudeSessionManager-linux-x86_64 && ./ClaudeSessionManager-linux-x86_64` |
 
 The app opens your default browser to a page served from your own machine. Nothing
-is uploaded anywhere — see [Privacy](#privacy). Quitting the app (Ctrl+C, or closing
-its window) stops the server.
+is uploaded anywhere — see [Privacy](#privacy).
 
 ## Using it
 
@@ -44,6 +43,19 @@ Each row shows:
 Click any column header to sort. Type in the search box to filter by name, project,
 prompt text or session ID. Click a row to preview its opening prompts in the side
 panel before deciding.
+
+## Quitting
+
+The app runs a small server on your machine, so it needs stopping when you're done.
+Any of these work:
+
+- **Quit** button in the top-right of the page — stops the server immediately
+- **Close the tab** — with no page open, the app shuts itself down within about 90
+  seconds, so a double-clicked build never lingers in the background
+- **Ctrl+C** in the terminal, if you launched it from one
+
+Pass `--stay-open` to disable the automatic shutdown and keep the server running
+regardless of whether a page is open.
 
 ## Deleting
 
@@ -89,6 +101,7 @@ python3 app.py --root DIR      # start on a specific folder
 python3 app.py --list          # plain terminal listing, no browser
 python3 app.py --port 8791     # fixed port (default: any free one)
 python3 app.py --no-browser    # start the server without opening a browser
+python3 app.py --stay-open     # don't auto-exit when the last page closes
 ```
 
 macOS/Linux: `./run.sh` · Windows: `run.bat`
